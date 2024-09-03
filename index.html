@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binary Riddle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #8e44ad, #3498db);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: auto;
+        }
+
+        .game-container {
+            margin: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .game-container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.3) 100%);
+            filter: blur(50px);
+            animation: lightAnimation 5s infinite alternate;
+            z-index: 1;
+        }
+
+        @keyframes lightAnimation {
+            0% {
+                transform: scale(1) translateX(-50%) translateY(-50%);
+            }
+            100% {
+                transform: scale(1.5) translateX(50%) translateY(50%);
+            }
+        }
+
+        .game-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            background-color: #3498db;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            background-color: #2980b9;
+        }
+
+        .riddle {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .lives, .score {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+
+        .response {
+            margin: 15px 0;
+            font-size: 16px;
+            font-style: italic;
+            color: #2c3e50;
+        }
+
+        .loading {
+            margin: 15px 0;
+            font-size: 16px;
+            font-style: italic;
+            color: #3498db;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .loading::before {
+            content: 'Loading';
+            animation: loadingDots 1.5s infinite;
+        }
+
+        .loading::after {
+            content: '.';
+            animation: loadingDots 1.5s infinite;
+            animation-delay: 0.3s;
+        }
+
+        .loading::nth-child(2)::after {
+            content: '..';
+            animation: loadingDots 1.5s infinite;
+            animation-delay: 0.6s;
+        }
+
+        @keyframes loadingDots {
+            0%, 20% {
+                opacity: 0;
+            }
+            40% {
+                opacity: 1;
+            }
+            60% {
+                opacity: 1;
+            }
+            80%, 100% {
+                opacity: 0;
+            }
+        }
+
+        .input-container {
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            width: calc(100% - 24px);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-content">
+            <div class="lives">Lives: <span id="lives">3</span></div>
+            <div class="score">Score: <span id="score">0</span></div>
+            <div class="riddle" id="riddle">Loading riddle...</div>
+            <div class="input-container">
+                <input type="text" id="answer" placeholder="Enter your answer">
+                <button class="btn" id="submitBtn">Submit</button>
+                <button class="btn hidden" id="retry" onclick="startGame()">Retry</button>
+            </div>
+            <div class="response" id="response"></div>
+            <div class="loading hidden" id="loading">Processing your answer...</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+    
+    <script type="module">
+      import { GoogleGenerativeAI } from "@google/generative-ai";
+
+      let genAI;
+      let model;
+      let currentRiddleIndex = 0;
+      let lives = 3;
+      let score = 0;
+      let currentRiddle = '';
+      let correctAnswer = '';
+
+      function requestApiKey() {
+        const apiKey = prompt("Please enter your Google Gemini API key:");
+        if (!apiKey) {
+          alert("API key is required to play the game.");
+          return;
+        }
+        initializeGame(apiKey);
+      }
+
+      async function initializeGame(apiKey) {
+        genAI = new GoogleGenerativeAI(apiKey);
+        model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        startGame();
+      }
+
+      async function startGame() {
+        lives = 3;
+        score = 0;
+        document.getElementById('lives').textContent = lives;
+        document.getElementById('score').textContent = score;
+        document.getElementById('retry').classList.add('hidden');
+        currentRiddleIndex = 0;
+        await generateRiddle();
+      }
+
+      async function generateRiddle() {
+        if (currentRiddleIndex >= 3) {
+          document.querySelector('.riddle').textContent = 'Congratulations! You have completed all riddles.';
+          document.querySelector('.riddle').classList.add('hidden');
+          document.getElementById('retry').classList.remove('hidden');
+          return;
+        }
+
+        const prompt = "Generate a binary code only. Do not add any extra text or explanations.";
+        try {
+          const result = await model.generateContent(prompt);
+          currentRiddle = result.response.text().trim();
+          correctAnswer = binaryToText(currentRiddle);
+          document.getElementById('riddle').textContent = `Binary Code: ${currentRiddle}`;
+        } catch (error) {
+          console.error("Error generating riddle:", error);
+          document.getElementById('riddle').textContent = 'Failed to load riddle. Please try again.';
+        }
+      }
+
+      function binaryToText(binary) {
+        return binary.split(' ')
+                      .map(bin => String.fromCharCode(parseInt(bin, 2)))
+                      .join('');
+      }
+
+      async function checkAnswer() {
+        const userAnswer = document.getElementById('answer').value.trim().toLowerCase();
+        document.getElementById('loading').classList.remove('hidden');
+        const { isCorrect, geminiResponse } = await verifyAnswer(userAnswer);
+        document.getElementById('loading').classList.add('hidden');
+
+        if (isCorrect) {
+          score++;
+          document.getElementById('score').textContent = score;
+          currentRiddleIndex++;
+          await generateRiddle();
+        } else {
+          lives--;
+          document.getElementById('lives').textContent = lives;
+          if (lives <= 0) {
+            document.querySelector('.riddle').textContent = 'Game Over! No lives left.';
+            document.getElementById('retry').classList.remove('hidden');
+            document.querySelector('.riddle').classList.add('hidden');
+          } else {
+            alert('Incorrect answer, try again!');
+          }
+        }
+
+        document.getElementById('response').textContent = `Gemini Response: ${geminiResponse}`;
+        document.getElementById('answer').value = '';
+      }
+
+      async function verifyAnswer(answer) {
+        const prompt = `Is the following answer correct for the binary riddle? Answer: ${answer}`;
+        try {
+          const result = await model.generateContent(prompt);
+          const geminiResponse = result.response.text().trim();
+          const isCorrect = geminiResponse.toLowerCase() === 'yes';
+          return { isCorrect, geminiResponse };
+        } catch (error) {
+          console.error("Error verifying answer:", error);
+          return { isCorrect: false, geminiResponse: 'Error verifying answer.' };
+        }
+      }
+
+      requestApiKey();
+
+      document.getElementById('submitBtn').addEventListener('click', checkAnswer);
+    </script>
+</body>
+</html>
